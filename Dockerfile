@@ -63,7 +63,7 @@ ARG KEYS="\
   "
 
 # Build stage
-FROM --platform=$BUILDPLATFORM alpine:latest AS builder
+FROM alpine:latest AS builder
 
 ARG VERSION
 ARG TARGETPLATFORM
