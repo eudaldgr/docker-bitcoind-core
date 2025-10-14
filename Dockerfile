@@ -116,7 +116,7 @@ RUN cmake -S . -B build \
   -DBUILD_BITCOIN_BIN=OFF \
   -DBUILD_DAEMON=ON \
   -DBUILD_GUI=OFF \
-  -DBUILD_CLI=ON \
+  -DBUILD_CLI=OFF \
   -DBUILD_TX=OFF \
   -DBUILD_UTIL=OFF \
   -DBUILD_UTIL_CHAINSTATE=OFF \
@@ -139,16 +139,15 @@ RUN cmake -S . -B build \
   -DWITH_CCACHE=OFF \
   -DINSTALL_MAN=OFF
 
-RUN cmake --build build --target bitcoind bitcoin-cli -j "$(nproc)"
-RUN strip build/bin/bitcoind build/bin/bitcoin-cli
+RUN cmake --build build --target bitcoind -j "$(nproc)"
+RUN strip build/bin/bitcoind
 
 RUN echo "Collect all runtime dependencies"
 RUN mkdir -p /runtime/lib /runtime/bin /runtime/data /runtime/etc
-RUN cp build/bin/bitcoind build/bin/bitcoin-cli /runtime/bin/
+RUN cp build/bin/bitcoind /runtime/bin/
 
 RUN echo "Copy all required shared libraries"
 RUN ldd /runtime/bin/bitcoind | awk '{if (match($3,"/")) print $3}' | xargs -I '{}' cp -v '{}' /runtime/lib/ || true
-RUN ldd /runtime/bin/bitcoin-cli | awk '{if (match($3,"/")) print $3}' | xargs -I '{}' cp -v '{}' /runtime/lib/ || true
 
 RUN echo "Copy the dynamic linker"
 RUN cp /lib/ld-musl-*.so.1 /runtime/lib/
