@@ -14,8 +14,12 @@ jobs:
     steps:
       - name: Set VERSION and TAG
         run: |
-          echo "TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-          echo "VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
+          TAG="${GITHUB_REF#refs/*/}"
+          VERSION="${TAG#v}"
+          # Remove +metadata (p.ex. v30.0+1 → 30.0)
+          VERSION="${VERSION%%+*}"
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       - uses: actions/checkout@v4
 
