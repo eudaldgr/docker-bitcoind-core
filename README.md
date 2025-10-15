@@ -56,7 +56,7 @@ docker run --name bitcoind -v $HOME/.bitcoin:/data/.bitcoin \
 Or just use the container like a bitcoind binary:
 
 ```
-$ docker run eudaldgr/docker-bitcoind-core:v30.0 -version
+$ docker run -v $HOME/.bitcoin:/data/.bitcoin eudaldgr/docker-bitcoind-core:v30.0 -version
 Bitcoin Core daemon version v30.0.0
 Copyright (C) 2009-2025 The Bitcoin Core developers
 
