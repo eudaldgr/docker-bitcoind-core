@@ -37,7 +37,7 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             --build-arg VERSION=${{ env.VERSION }} \
             --tag ghcr.io/${{ github.repository }}:${{ env.TAG }} \
-            --tag ghcr.io/${{ github.repository }}:${{ env.VERSION }} \
+            --tag ghcr.io/${{ github.repository }}:v${{ env.VERSION }} \
             --tag ghcr.io/${{ github.repository }}:v${{ env.MAJOR }} \
             --tag ghcr.io/${{ github.repository }}:latest \
             --push .
