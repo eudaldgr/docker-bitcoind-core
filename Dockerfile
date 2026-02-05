@@ -102,10 +102,10 @@ RUN set -ex; \
   gpg --verify SHA256SUMS.asc 2>&1 >/dev/null | grep "^gpg: Good signature from" || { echo "No valid signature"; exit 1; };
 
 RUN set -ex; \
-  [ -f SHA256SUMS ] && cp SHA256SUMS sha256sums || cp SHA256SUMS.asc sha256sums
+  [ -f SHA256SUMS ] && cp SHA256SUMS sha256sums || cp SHA256SUMS.asc sha256sums;
 
 RUN set -ex; \
-  grep "bitcoin-${APP_VERSION}.tar.gz" sha256sums | sha256sum -c
+  grep "bitcoin-${APP_VERSION}.tar.gz" sha256sums | sha256sum -c;
 
 RUN set -ex; \
   tar xzf bitcoin-${APP_VERSION}.tar.gz;
