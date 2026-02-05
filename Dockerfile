@@ -1,3 +1,7 @@
+# Global arguments
+ARG APP_UID=1000
+ARG APP_GID=1000
+
 # Bitcoin Core Release Keys as of 4/Sep/2024
 # - https://github.com/bitcoin-core/guix.sigs/tree/main/builder-keys
 # - https://api.github.com/repos/bitcoin-core/guix.sigs/contents/builder-keys
@@ -62,55 +66,54 @@ ARG KEYS="\
   79D00BAC68B56D422F945A8F8E3A8F3247DBCBBF \
   "
 
-# Build stage
-FROM docker.io/alpine:3.23.3@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS builder
+FROM ghcr.io/eudaldgr/scratchless AS scratchless
 
-ARG VERSION
-ARG TARGETPLATFORM
-# re-declared from above
+# Build stage
+FROM docker.io/alpine AS build
+ARG APP_VERSION \
+  APP_ROOT \
+  TARGETARCH \
+  TARGETVARIANT
+
 ARG KEYS
 
-ARG APP_UID=1000
-ARG APP_GID=1000
-
-WORKDIR /build
-
-# Set optimized compiler flags
-ENV CFLAGS="-O3 -pipe -fPIE"
-ENV CXXFLAGS="-O3 -pipe -fPIE"
-ENV LDFLAGS="-pie -Wl,--as-needed"
-ENV MAKEFLAGS="-j$(nproc)"
-
-RUN echo "Installing build deps"
-RUN apk add --no-cache --virtual .build-deps \
-  build-base cmake linux-headers pkgconf python3 \
-  libevent-dev boost-dev \
+RUN set -ex; \
+  apk --no-cache --update add \
+  build-base \
+  cmake \
+  linux-headers \
+  pkgconf \
+  python3 \
+  libevent-dev \
+  boost-dev \
   zeromq-dev \
-  gnupg wget tar
+  gnupg \
+  wget \
+  tar;
 
-RUN echo "Downloading release assets"
-RUN wget https://bitcoincore.org/bin/bitcoin-core-${VERSION}/bitcoin-${VERSION}.tar.gz
-RUN wget https://bitcoincore.org/bin/bitcoin-core-${VERSION}/SHA256SUMS
-RUN wget https://bitcoincore.org/bin/bitcoin-core-${VERSION}/SHA256SUMS.asc
-RUN echo "Downloaded release assets:" && ls
+RUN set -ex; \
+  wget https://bitcoincore.org/bin/bitcoin-core-${APP_VERSION}/bitcoin-${APP_VERSION}.tar.gz \
+  https://bitcoincore.org/bin/bitcoin-core-${APP_VERSION}/SHA256SUMS \
+  https://bitcoincore.org/bin/bitcoin-core-${APP_VERSION}/SHA256SUMS.asc;
 
-RUN echo "Verifying PGP signatures"
-RUN gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys $KEYS ; \
-  gpgconf --kill all
-RUN gpg --verify SHA256SUMS.asc 2>&1 >/dev/null | grep "^gpg: Good signature from" || { echo "No valid signature"; exit 1; }
-RUN echo "PGP signature verification passed"
+RUN set -ex; \
+  gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys $KEYS; \
+  gpgconf --kill all; \
+  gpg --verify SHA256SUMS.asc 2>&1 >/dev/null | grep "^gpg: Good signature from" || { echo "No valid signature"; exit 1; };
 
-RUN echo "Verifying checksums"
-RUN [ -f SHA256SUMS ] && cp SHA256SUMS /sha256sums || cp SHA256SUMS.asc /sha256sums
-RUN grep "bitcoin-${VERSION}.tar.gz" /sha256sums | sha256sum -c
-RUN echo "Checksums verified ok"
+RUN set -ex; \
+  [ -f SHA256SUMS ] && cp SHA256SUMS sha256sums || cp SHA256SUMS.asc sha256sums
 
-RUN echo "Extracting release assets"
-RUN tar xzf bitcoin-${VERSION}.tar.gz --strip-components=1
+RUN set -ex; \
+  grep "bitcoin-${APP_VERSION}.tar.gz" sha256sums | sha256sum -c
 
-RUN echo "Build from source"
+RUN set -ex; \
+  tar xzf bitcoin-${APP_VERSION}.tar.gz;
+
 ENV BITCOIN_GENBUILD_NO_GIT=1
-RUN cmake -S . -B build \
+RUN set -ex; \
+  cd bitcoin-${APP_VERSION}; \
+  cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr \
   -DBUILD_BITCOIN_BIN=OFF \
@@ -137,37 +140,56 @@ RUN cmake -S . -B build \
   -DREDUCE_EXPORTS=ON \
   -DWERROR=OFF \
   -DWITH_CCACHE=OFF \
-  -DINSTALL_MAN=OFF
+  -DINSTALL_MAN=OFF;
 
-RUN cmake --build build --target bitcoind -j "$(nproc)"
-RUN strip build/bin/bitcoind
+RUN set -ex; \
+  cd bitcoin-${APP_VERSION}; \
+  cmake --build build --target bitcoind -j "$(nproc)";
 
-RUN echo "Collect all runtime dependencies"
-RUN mkdir -p /runtime/lib /runtime/bin /runtime/data /runtime/etc
-RUN cp build/bin/bitcoind /runtime/bin/
+RUN set -ex; \
+  cd bitcoin-${APP_VERSION}; \
+  strip build/bin/bitcoind;
 
-RUN echo "Copy all required shared libraries"
-RUN ldd /runtime/bin/bitcoind | awk '{if (match($3,"/")) print $3}' | xargs -I '{}' cp -v '{}' /runtime/lib/ || true
+COPY --from=scratchless / ${APP_ROOT}/
 
-RUN echo "Copy the dynamic linker"
-RUN cp /lib/ld-musl-*.so.1 /runtime/lib/
+RUN set -ex; \
+  mkdir -p \
+  ${APP_ROOT}/bin \
+  ${APP_ROOT}/data \
+  ${APP_ROOT}/etc \
+  ${APP_ROOT}/lib;
 
-RUN echo "Create minimal user files"
-RUN echo "bitcoin:x:${APP_UID}:${APP_GID}:bitcoin:/data:/sbin/nologin" > /runtime/etc/passwd
-RUN echo "bitcoin:x:${APP_GID}:" > /runtime/etc/group
+RUN set -ex; \
+  cd bitcoin-${APP_VERSION}; \
+  cp build/bin/bitcoind ${APP_ROOT}/bin/;
 
-RUN echo "Set ownership for data directory"
-RUN chown -R ${APP_UID}:${APP_GID} /runtime/data
+RUN set -ex; \
+  ldd ${APP_ROOT}/bin/bitcoind | awk '{if (match($3,"/")) print $3}' | xargs -I '{}' cp -v '{}' ${APP_ROOT}/lib/ || true;
+
+RUN set -ex; \
+  cp /lib/ld-musl-*.so.1 ${APP_ROOT}/lib/;
 
 # Final scratch image
 FROM scratch
-LABEL org.opencontainers.image.authors="Eudald Gubert i Roldan <https://eudald.gr>"
 
-ARG APP_UID=1000
-ARG APP_GID=1000
+ARG TARGETPLATFORM \
+  TARGETOS \
+  TARGETARCH \
+  TARGETVARIANT \
+  APP_IMAGE \
+  APP_NAME \
+  APP_VERSION \
+  APP_ROOT \
+  APP_UID \
+  APP_GID \
+  APP_NO_CACHE
 
-# Copy everything from runtime
-COPY --from=builder /runtime/ /
+ENV APP_IMAGE=${APP_IMAGE} \
+  APP_NAME=${APP_NAME} \
+  APP_VERSION=${APP_VERSION} \
+  APP_ROOT=${APP_ROOT}
+
+COPY --from=build ${APP_ROOT}/ /
 
 ENV HOME=/data
 VOLUME /data/.bitcoin
